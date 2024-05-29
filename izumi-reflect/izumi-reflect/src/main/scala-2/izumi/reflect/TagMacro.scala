@@ -46,15 +46,57 @@ class TagMacro(val c: blackbox.Context) {
   final def makeTag[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
     val tpe = weakTypeOf[T]
     if (ReflectionUtil.allPartsStrong(tpe.dealias)) {
-      logger.log(s"Got strong tag, generating LTT right away: ${weakTypeOf[T]}")
-      val ltag = ltagMacro.makeParsedLightTypeTagImpl(tpe)
-      val cls = closestClass(tpe)
-      c.Expr[Tag[T]] {
-        q"_root_.izumi.reflect.Tag.apply[$tpe]($cls, $ltag)"
-      }
+      makeStrongTagImpl[T](tpe)
     } else {
-      makeTagImpl[T]
+      makeWeakTagImpl[T]
     }
+  }
+
+  final def makeStrongTag[T](tpe: c.Type): c.Expr[Tag[T]] = {
+    assert(ReflectionUtil.allPartsStrong(tpe.dealias))
+    makeStrongTagImpl(tpe)
+  }
+
+  private def makeStrongTagImpl[T](tpe: c.Type): c.Expr[Tag[T]] = {
+    logger.log(s"Got strong tag, generating LTT right away: ${weakTypeOf[T]}")
+    val ltag = ltagMacro.makeParsedLightTypeTagImpl(tpe)
+    val cls = closestClass(tpe)
+    c.Expr[Tag[T]] {
+      q"_root_.izumi.reflect.Tag.apply[$tpe]($cls, $ltag)"
+    }
+  }
+
+  final def makeWeakTag[T](tpe: c.Type): c.Expr[Tag[T]] = {
+    assert(!ReflectionUtil.allPartsStrong(tpe.dealias))
+    makeStrongTagImpl(tpe)
+  }
+
+  private def makeWeakTagImpl[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
+    logger.log(s"Got non-strong tag: ${weakTypeOf[T]}")
+
+    if (getImplicitError().endsWith(":")) { // yep
+      logger.log(s"Got continuation implicit error: ${getImplicitError()}")
+    } else {
+      resetImplicitError(weakTypeOf[T])
+      addImplicitError("\n\n<trace>: ")
+    }
+
+    val tgt = ReflectionUtil.norm(c.universe: c.universe.type, logger)(weakTypeOf[T].dealias)
+
+    addImplicitError(s"  deriving Tag for ${weakTypeOf[T]}, dealiased: $tgt:")
+
+    val res = tgt match {
+      case RefinedType(intersection, _) =>
+        mkRefined[T](intersection, tgt)
+      case _ =>
+        mkTagWithTypeParameters[T](tgt)
+    }
+
+    addImplicitError(s"  succeeded for: $tgt")
+
+    logger.log(s"Final code of Tag[${weakTypeOf[T]}]:\n ${showCode(res.tree)}")
+
+    res
   }
 
   @inline final def makeHKTagMaterializer[ArgStruct: c.WeakTypeTag]: c.Expr[HKTagMaterializer[ArgStruct]] = {
@@ -227,34 +269,6 @@ class TagMacro(val c: blackbox.Context) {
     c.Expr[HKTag[ArgStruct]] {
       q"_root_.izumi.reflect.HKTag.apply($cls, $ltag)"
     }
-  }
-
-  def makeTagImpl[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
-    logger.log(s"Got non-strong tag: ${weakTypeOf[T]}")
-
-    if (getImplicitError().endsWith(":")) { // yep
-      logger.log(s"Got continuation implicit error: ${getImplicitError()}")
-    } else {
-      resetImplicitError(weakTypeOf[T])
-      addImplicitError("\n\n<trace>: ")
-    }
-
-    val tgt = ReflectionUtil.norm(c.universe: c.universe.type, logger)(weakTypeOf[T].dealias)
-
-    addImplicitError(s"  deriving Tag for ${weakTypeOf[T]}, dealiased: $tgt:")
-
-    val res = tgt match {
-      case RefinedType(intersection, _) =>
-        mkRefined[T](intersection, tgt)
-      case _ =>
-        mkTagWithTypeParameters[T](tgt)
-    }
-
-    addImplicitError(s"  succeeded for: $tgt")
-
-    logger.log(s"Final code of Tag[${weakTypeOf[T]}]:\n ${showCode(res.tree)}")
-
-    res
   }
 
   @inline
