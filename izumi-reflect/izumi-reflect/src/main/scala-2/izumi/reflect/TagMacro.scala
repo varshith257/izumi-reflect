@@ -57,7 +57,7 @@ class TagMacro(val c: blackbox.Context) {
     makeStrongTagImpl(tpe)
   }
 
-  private def makeStrongTagImpl[T](tpe: c.Type): c.Expr[Tag[T]] = {
+  private def makeStrongTagImpl[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
     logger.log(s"Got strong tag, generating LTT right away: ${weakTypeOf[T]}")
     val ltag = ltagMacro.makeParsedLightTypeTagImpl(tpe)
     val cls = closestClass(tpe)
