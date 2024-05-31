@@ -48,13 +48,13 @@ class TagMacro(val c: blackbox.Context) {
     if (ReflectionUtil.allPartsStrong(tpe.dealias)) {
       makeStrongTagImpl[T](tpe)
     } else {
-      makeWeakTagImpl[T]
+      makeWeakTagImpl[T](tpe)
     }
   }
 
-  final def makeStrongTag[T](tpe: c.Type): c.Expr[Tag[T]] = {
+  final def makeStrongTag[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
     assert(ReflectionUtil.allPartsStrong(tpe.dealias))
-    makeStrongTagImpl(tpe)
+    makeStrongTagImpl[T](tpe)
   }
 
   private def makeStrongTagImpl[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
@@ -66,24 +66,24 @@ class TagMacro(val c: blackbox.Context) {
     }
   }
 
-  final def makeWeakTag[T](tpe: c.Type): c.Expr[Tag[T]] = {
+  final def makeWeakTag[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
     assert(!ReflectionUtil.allPartsStrong(tpe.dealias))
-    makeStrongTagImpl(tpe)
+    makeWeakTagImpl[T](tpe)
   }
 
-  private def makeWeakTagImpl[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
-    logger.log(s"Got non-strong tag: ${weakTypeOf[T]}")
+  private def makeWeakTagImpl[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
+    logger.log(s"Got non-strong tag: $tpe")
 
     if (getImplicitError().endsWith(":")) { // yep
       logger.log(s"Got continuation implicit error: ${getImplicitError()}")
     } else {
-      resetImplicitError(weakTypeOf[T])
+      resetImplicitError(tpe)
       addImplicitError("\n\n<trace>: ")
     }
 
-    val tgt = ReflectionUtil.norm(c.universe: c.universe.type, logger)(weakTypeOf[T].dealias)
+    val tgt = ReflectionUtil.norm(c.universe: c.universe.type, logger)(tpe.dealias)
 
-    addImplicitError(s"  deriving Tag for ${weakTypeOf[T]}, dealiased: $tgt:")
+    addImplicitError(s"  deriving Tag for $tpe, dealiased: $tgt:")
 
     val res = tgt match {
       case RefinedType(intersection, _) =>
@@ -94,7 +94,7 @@ class TagMacro(val c: blackbox.Context) {
 
     addImplicitError(s"  succeeded for: $tgt")
 
-    logger.log(s"Final code of Tag[${weakTypeOf[T]}]:\n ${showCode(res.tree)}")
+    logger.log(s"Final code of Tag[$tpe]:\n ${showCode(res.tree)}")
 
     res
   }
