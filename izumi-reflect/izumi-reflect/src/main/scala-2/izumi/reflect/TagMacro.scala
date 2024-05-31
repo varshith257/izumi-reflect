@@ -80,13 +80,16 @@ class TagMacro(val c: blackbox.Context) {
   }
 
   private def makeStrongTagImpl[T](tpe: c.Type, tag: c.WeakTypeTag[T]): c.Expr[Tag[T]] = {
-    // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
-    implicit val itag: c.WeakTypeTag[T] = tag
-    logger.log(s"Got strong tag, generating LTT right away: ${weakTypeOf[T]}")
+    logger.log(s"Got strong tag, generating LTT right away: ${tag.tpe}")
     val ltag = ltagMacro.makeParsedLightTypeTagImpl(tpe)
     val cls = closestClass(tpe)
-    c.Expr[Tag[T]] {
-      q"_root_.izumi.reflect.Tag.apply[$tpe]($cls, $ltag)"
+
+    {
+      // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
+      implicit val itag: c.WeakTypeTag[T] = tag
+      c.Expr[Tag[T]] {
+        q"_root_.izumi.reflect.Tag.apply[$tpe]($cls, $ltag)"
+      }
     }
   }
 
@@ -108,9 +111,7 @@ class TagMacro(val c: blackbox.Context) {
       case RefinedType(intersection, _) =>
         mkRefined[T](intersection, tgt, tag)
       case _ =>
-        // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
-        implicit val itag: c.WeakTypeTag[T] = tag
-        mkTagWithTypeParameters[T](tgt)
+        mkTagWithTypeParameters[T](tgt, tag)
     }
 
     addImplicitError(s"  succeeded for: $tgt")
@@ -122,9 +123,7 @@ class TagMacro(val c: blackbox.Context) {
 
   // FIXME: nearly a copypaste of mkTagWithTypeParameters, deduplicate?
   private[this] def makeHKTagImpl[ArgStruct](outerLambda: Type, tag: c.WeakTypeTag[ArgStruct]): c.Expr[HKTag[ArgStruct]] = {
-    // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility. quasiquotes implicitly use WTT
-    implicit val itag: c.WeakTypeTag[ArgStruct] = tag
-    logger.log(s"Got unresolved HKTag summon: ${tagFormat(outerLambda)} from ArgStruct: ${weakTypeOf[ArgStruct]}")
+    logger.log(s"Got unresolved HKTag summon: ${tagFormat(outerLambda)} from ArgStruct: ${tag.tpe}")
 
     def isLambdaParamOf(arg: Type, lam: Type): Boolean = {
       lam.typeParams.contains(arg.typeSymbol)
@@ -182,8 +181,12 @@ class TagMacro(val c: blackbox.Context) {
           c.Expr[List[Option[LightTypeTag]]](q"$argExprs")
         }
 
-        reify {
-          HKTag.appliedTagNonPos[ArgStruct](constructorTag.splice, argTags.splice)
+        {
+          // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility. quasiquotes implicitly use WTT
+          implicit val itag: c.WeakTypeTag[ArgStruct] = tag
+          reify {
+            HKTag.appliedTagNonPos[ArgStruct](constructorTag.splice, argTags.splice)
+          }
         }
       } else {
         // warn if constructor is an intersection type, as they don't work properly in this position right now
@@ -259,9 +262,14 @@ class TagMacro(val c: blackbox.Context) {
         }
 
         val outerLambdaReprTag = ltagMacro.makeParsedLightTypeTagImpl(LightTypeTag(ctorApplyingLambda, Map.empty, Map.empty))
-        reify {
-          val ctorTag = constructorTag.splice
-          HKTag.appliedTagNonPosAux[ArgStruct](ctorTag.closestClass, outerLambdaReprTag.splice, Some(ctorTag.tag) :: argTagsExceptCtor.splice)
+
+        {
+          // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility. quasiquotes implicitly use WTT
+          implicit val itag: c.WeakTypeTag[ArgStruct] = tag
+          reify {
+            val ctorTag = constructorTag.splice
+            HKTag.appliedTagNonPosAux[ArgStruct](ctorTag.closestClass, outerLambdaReprTag.splice, Some(ctorTag.tag) :: argTagsExceptCtor.splice)
+          }
         }
       }
     }
@@ -291,6 +299,7 @@ class TagMacro(val c: blackbox.Context) {
     val cls = closestClass(originalRefinement)
 
     {
+      // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
       implicit val itag: c.WeakTypeTag[T] = tag
       reify {
         Tag.refinedTag[T](cls.splice, intersectionTags.splice, structTag.splice, additionalTypeMembers.splice)
@@ -325,7 +334,7 @@ class TagMacro(val c: blackbox.Context) {
 
   // we need to handle three cases – type args, refined types and type bounds (we don't handle type bounds currently)
   @inline
-  protected[this] def mkTagWithTypeParameters[T: c.WeakTypeTag](tpe: Type): c.Expr[Tag[T]] = {
+  protected[this] def mkTagWithTypeParameters[T](tpe: Type, tag: c.WeakTypeTag[T]): c.Expr[Tag[T]] = {
     val constructorTag: c.Expr[HKTag[_]] = {
       val ctor = tpe.typeConstructor
       getCtorKindIfCtorIsTypeParameter(ctor) match {
@@ -372,8 +381,12 @@ class TagMacro(val c: blackbox.Context) {
       c.Expr[List[LightTypeTag]](Liftable.liftList[c.Expr[LightTypeTag]].apply(args.map(summonLightTypeTagOfAppropriateKind)))
     }
 
-    reify {
-      Tag.appliedTag[T](constructorTag.splice, argTags.splice)
+    {
+      // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
+      implicit val itag: c.WeakTypeTag[T] = tag
+      reify {
+        Tag.appliedTag[T](constructorTag.splice, argTags.splice)
+      }
     }
   }
 
