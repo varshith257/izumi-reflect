@@ -46,18 +46,42 @@ class TagMacro(val c: blackbox.Context) {
   final def makeTag[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
     val tpe = weakTypeOf[T]
     if (ReflectionUtil.allPartsStrong(tpe.dealias)) {
-      makeStrongTagImpl[T](tpe)
+      makeStrongTagImpl[T](tpe, implicitly[c.WeakTypeTag[T]])
     } else {
-      makeWeakTagImpl[T](tpe)
+      makeWeakTagImpl[T](tpe, implicitly[c.WeakTypeTag[T]])
     }
   }
 
-  final def makeStrongTag[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
+  final def makeStrongTag[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
+    val tpe = weakTypeOf[T]
     assert(ReflectionUtil.allPartsStrong(tpe.dealias))
-    makeStrongTagImpl[T](tpe)
+    makeStrongTagImpl[T](tpe, implicitly[c.WeakTypeTag[T]])
   }
 
-  private def makeStrongTagImpl[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
+  final def makeWeakTag[T: c.WeakTypeTag]: c.Expr[Tag[T]] = {
+    val tpe = weakTypeOf[T]
+    assert(!ReflectionUtil.allPartsStrong(tpe.dealias))
+    makeWeakTagImpl[T](tpe, implicitly[c.WeakTypeTag[T]])
+  }
+
+  @inline final def makeHKTagMaterializer[ArgStruct: c.WeakTypeTag]: c.Expr[HKTagMaterializer[ArgStruct]] = {
+    c.Expr[HKTagMaterializer[ArgStruct]](q"new ${weakTypeOf[HKTagMaterializer[ArgStruct]]}(${makeHKTag[ArgStruct]})")
+  }
+
+  @inline final def makeHKTag[ArgStruct: c.WeakTypeTag]: c.Expr[HKTag[ArgStruct]] = {
+    val argStruct = weakTypeOf[ArgStruct]
+    val ctor = ltagMacro.unpackArgStruct(argStruct)
+    if (ReflectionUtil.allPartsStrong(ctor)) {
+      logger.log(s"HK: found Strong ctor=$ctor in ArgStruct, returning $argStruct")
+      makeHKTagFromStrongTpe(ctor)
+    } else {
+      makeHKTagImpl(ctor, implicitly[c.WeakTypeTag[ArgStruct]])
+    }
+  }
+
+  private def makeStrongTagImpl[T](tpe: c.Type, tag: c.WeakTypeTag[T]): c.Expr[Tag[T]] = {
+    // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
+    implicit val itag: c.WeakTypeTag[T] = tag
     logger.log(s"Got strong tag, generating LTT right away: ${weakTypeOf[T]}")
     val ltag = ltagMacro.makeParsedLightTypeTagImpl(tpe)
     val cls = closestClass(tpe)
@@ -66,12 +90,7 @@ class TagMacro(val c: blackbox.Context) {
     }
   }
 
-  final def makeWeakTag[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
-    assert(!ReflectionUtil.allPartsStrong(tpe.dealias))
-    makeWeakTagImpl[T](tpe)
-  }
-
-  private def makeWeakTagImpl[T: c.WeakTypeTag](tpe: c.Type): c.Expr[Tag[T]] = {
+  private def makeWeakTagImpl[T](tpe: c.Type, tag: c.WeakTypeTag[T]): c.Expr[Tag[T]] = {
     logger.log(s"Got non-strong tag: $tpe")
 
     if (getImplicitError().endsWith(":")) { // yep
@@ -87,8 +106,10 @@ class TagMacro(val c: blackbox.Context) {
 
     val res = tgt match {
       case RefinedType(intersection, _) =>
-        mkRefined[T](intersection, tgt)
+        mkRefined[T](intersection, tgt, tag)
       case _ =>
+        // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility
+        implicit val itag: c.WeakTypeTag[T] = tag
         mkTagWithTypeParameters[T](tgt)
     }
 
@@ -99,23 +120,10 @@ class TagMacro(val c: blackbox.Context) {
     res
   }
 
-  @inline final def makeHKTagMaterializer[ArgStruct: c.WeakTypeTag]: c.Expr[HKTagMaterializer[ArgStruct]] = {
-    c.Expr[HKTagMaterializer[ArgStruct]](q"new ${weakTypeOf[HKTagMaterializer[ArgStruct]]}(${makeHKTag[ArgStruct]})")
-  }
-
-  @inline final def makeHKTag[ArgStruct: c.WeakTypeTag]: c.Expr[HKTag[ArgStruct]] = {
-    val argStruct = weakTypeOf[ArgStruct]
-    val ctor = ltagMacro.unpackArgStruct(argStruct)
-    if (ReflectionUtil.allPartsStrong(ctor)) {
-      logger.log(s"HK: found Strong ctor=$ctor in ArgStruct, returning $argStruct")
-      makeHKTagFromStrongTpe(ctor)
-    } else {
-      makeHKTagImpl(ctor)
-    }
-  }
-
   // FIXME: nearly a copypaste of mkTagWithTypeParameters, deduplicate?
-  private[this] def makeHKTagImpl[ArgStruct: c.WeakTypeTag](outerLambda: Type): c.Expr[HKTag[ArgStruct]] = {
+  private[this] def makeHKTagImpl[ArgStruct](outerLambda: Type, tag: c.WeakTypeTag[ArgStruct]): c.Expr[HKTag[ArgStruct]] = {
+    // compiler always inserts WeakTypeTag, by passing it explicitly we slightly reduce fragility. quasiquotes implicitly use WTT
+    implicit val itag: c.WeakTypeTag[ArgStruct] = tag
     logger.log(s"Got unresolved HKTag summon: ${tagFormat(outerLambda)} from ArgStruct: ${weakTypeOf[ArgStruct]}")
 
     def isLambdaParamOf(arg: Type, lam: Type): Boolean = {
@@ -272,7 +280,7 @@ class TagMacro(val c: blackbox.Context) {
   }
 
   @inline
-  protected[this] def mkRefined[T: c.WeakTypeTag](intersection: List[Type], originalRefinement: Type): c.Expr[Tag[T]] = {
+  protected[this] def mkRefined[T](intersection: List[Type], originalRefinement: Type, tag: c.WeakTypeTag[T]): c.Expr[Tag[T]] = {
     val summonedIntersectionTags = intersection.map {
       t0 =>
         val t = ReflectionUtil.norm(c.universe: c.universe.type, logger)(t0.dealias)
@@ -282,8 +290,12 @@ class TagMacro(val c: blackbox.Context) {
     val (structTag, additionalTypeMembers) = mkStruct(intersection, originalRefinement)
     val cls = closestClass(originalRefinement)
 
-    reify {
-      Tag.refinedTag[T](cls.splice, intersectionTags.splice, structTag.splice, additionalTypeMembers.splice)
+    {
+      implicit val itag: c.WeakTypeTag[T] = tag
+      reify {
+        Tag.refinedTag[T](cls.splice, intersectionTags.splice, structTag.splice, additionalTypeMembers.splice)
+      }
+
     }
   }
 
