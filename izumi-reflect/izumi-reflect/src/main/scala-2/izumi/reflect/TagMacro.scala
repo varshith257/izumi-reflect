@@ -30,6 +30,7 @@ import scala.collection.immutable.ListMap
 import scala.reflect.api.Universe
 import scala.reflect.macros.{TypecheckException, blackbox, whitebox}
 
+
 // TODO: benchmark difference between searching all arguments vs. merge strategy
 // TODO: benchmark ProviderMagnet vs. identity macro vs. normal function
 @NowarnCompat.nowarn("msg=deprecated")
