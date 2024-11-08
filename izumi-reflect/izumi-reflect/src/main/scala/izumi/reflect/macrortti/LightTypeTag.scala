@@ -272,12 +272,12 @@ def scalaStyledName: String = {
             s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
           } else {
             // Non-trivial reordering of lambda parameters: render with explicit lambda notation
-            s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
+            s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.shortName}"
           }
 
         // Case for nested or more complex lambda cases (non-trivial)
         case _ =>
-          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
+          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.shortName}"
       }
       lambdaOutput
 
