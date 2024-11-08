@@ -260,34 +260,35 @@ abstract class LightTypeTag private[reflect] (
     * Fully-qualified rendering of a type, including packages and prefix types.
     * Traditional Scala notation for lambdas, e.g. scala.util.Either[+scala.Int,+_]
     */
-  def scalaStyledName: String = {
-    ref match {
-      case lambda: LightTypeTagRef.Lambda =>
-        val lambdaOutput = lambda.output match {
-          case LightTypeTagRef.FullReference(_, args, _) if args.size == lambda.input.size =>
-            // Check if parameters are in the declared order (trivial lambda)
-            val isTrivial = lambda.input.indices.forall(i => args(i) == lambda.input(i))
-            if (isTrivial) {
-              // Render as `Either[_, _]` for trivial cases
-              s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
-            } else {
-              // Render as `[A, B] =>> Either[B, A]` for reordered or non-trivial cases
-              s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
-            }
-          case _ =>
-            // Nested lambdas or cases with other structures
+def scalaStyledName: String = {
+  ref match {
+    case lambda: LightTypeTagRef.Lambda =>
+      val lambdaOutput = lambda.output match {
+        // Case for trivial lambda with parameters in the declared order
+        case LightTypeTagRef.FullReference(_, args, _) if args.size == lambda.input.size =>
+          val isTrivial = lambda.input.indices.forall(i => args(i) == lambda.input(i))
+          if (isTrivial) {
+            s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
+          } else {
             s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
-        }
-        lambdaOutput
+          }
 
-      case LightTypeTagRef.FullReference(_, args, _) if args.nonEmpty =>
-        // Parameterized types without lambda; use `_` placeholders if args are present
-        s"${ref.shortName}[${args.map(_ => "_").mkString(", ")}]"
+        // Case for nested or reordered lambdas (non-trivial)
+        case _ =>
+          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
+      }
+      lambdaOutput
 
-      case _ =>
-        ref.shortName
-    }
+    // General case for parameterized types without lambda
+    case LightTypeTagRef.FullReference(_, args, _) if args.nonEmpty =>
+      s"${ref.shortName}[${args.map(_ => "_").mkString(", ")}]"
+
+    // Default case
+    case _ =>
+      ref.shortName
   }
+}
+
 
   @deprecated(
     "Produces Scala version dependent output, with incorrect prefixes for types with value prefixes. Use `longNameWithPrefix` instead, or `longNameInternalSymbol` for old behavior",
