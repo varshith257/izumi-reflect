@@ -281,6 +281,7 @@ def scalaStyledName: String = {
       }
       lambdaOutput
 
+      // General case for parameterized types without lambda
 =    case LightTypeTagRef.FullReference(_, args, _) if args.nonEmpty =>
       // Render parameterized types with `_` placeholders if they have arguments
       s"${ref.shortName}[${args.map(_ => "_").mkString(", ")}]"
