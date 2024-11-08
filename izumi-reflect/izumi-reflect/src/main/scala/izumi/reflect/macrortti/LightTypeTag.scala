@@ -263,23 +263,25 @@ abstract class LightTypeTag private[reflect] (
   def scalaStyledName: String = {
     ref match {
       case lambda: LightTypeTagRef.Lambda =>
-        // Check if all lambda parameters are applied in the declared order
-        val isTrivial = lambda.input.indices.forall {
-          i =>
-            lambda.output match {
-              case LightTypeTagRef.FullReference(_, args, _) =>
-                args.isDefinedAt(i) && args(i) == lambda.input(i)
-              case _ => false
+        val lambdaOutput = lambda.output match {
+          case LightTypeTagRef.FullReference(_, args, _) if args.size == lambda.input.size =>
+            // Check if parameters are in the declared order (trivial lambda)
+            val isTrivial = lambda.input.indices.forall(i => args(i) == lambda.input(i))
+            if (isTrivial) {
+              // Render as `Either[_, _]` for trivial cases
+              s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
+            } else {
+              // Render as `[A, B] =>> Either[B, A]` for reordered or non-trivial cases
+              s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
             }
+          case _ =>
+            // Nested lambdas or cases with other structures
+            s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
         }
-
-        if (isTrivial) {
-          s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
-        } else {
-          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.shortName}"
-        }
+        lambdaOutput
 
       case LightTypeTagRef.FullReference(_, args, _) if args.nonEmpty =>
+        // Parameterized types without lambda; use `_` placeholders if args are present
         s"${ref.shortName}[${args.map(_ => "_").mkString(", ")}]"
 
       case _ =>
