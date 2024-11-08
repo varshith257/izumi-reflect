@@ -54,6 +54,6 @@ class LightTypeTagTest extends SharedLightTypeTagTest {
       info(list_.debug())
       assert(!list_.debug().contains("→ izumi.reflect.test.LightTypeTagProgressionTest.Test0[+izumi.reflect.test.LightTypeTagProgressionTest.L[=?]]"))
     }
-
+    
   }
 }
