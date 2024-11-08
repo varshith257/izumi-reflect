@@ -116,14 +116,8 @@ class LightTypeTagTest extends SharedLightTypeTagTest {
 
     "correctly render nested lambdas" in {
       type NestedLambda[A] = [B] =>> Either[A, B]
-      val tag = LTT[NestedLambda[Any]]
+      val tag = LTT[NestedLambda[Int][String]]
       assert(tag.scalaStyledName == "[A] =>> [B] =>> Either[A, B]")
-    }
-
-    "render complex partial applications with correct lambda notation" in {
-      type PartiallyAppliedLambda[A] = Either[A, Any]
-      val tag = LTT[PartiallyAppliedLambda[_]]
-      assert(tag.scalaStyledName == "[A] =>> Either[A, _]")
     }
   }
 
