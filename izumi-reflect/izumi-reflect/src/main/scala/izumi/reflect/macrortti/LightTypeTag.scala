@@ -263,7 +263,6 @@ abstract class LightTypeTag private[reflect] (
   def scalaStyledName: String = {
     ref match {
       case lambda: LightTypeTagRef.Lambda =>
-        // Check if all lambda parameters are applied in the correct order
         val isTrivial = lambda.input.indices.forall {
           i =>
             lambda.output match {
@@ -273,14 +272,13 @@ abstract class LightTypeTag private[reflect] (
             }
         }
         if (isTrivial) {
-          // Render with _ placeholders if trivial
-          s"${lambda.output.scalaStyledName}[${lambda.input.map(_ => "_").mkString(", ")}]"
+          // Render with `_` placeholders if trivial
+          s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
         } else {
           // Render full form if non-trivial
-          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
+          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.shortName}"
         }
-      case _ =>
-        ref.scalaStyledName
+      case _ => ref.shortName
     }
   }
 
