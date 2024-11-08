@@ -267,17 +267,17 @@ abstract class LightTypeTag private[reflect] (
         val isTrivial = lambda.input.indices.forall {
           i =>
             lambda.output match {
-              case LightTypeTagRef.AppliedReference(args, _) =>
+              case LightTypeTagRef.FullReference(_, args, _) =>
                 args.isDefinedAt(i) && args(i) == lambda.input(i)
               case _ => false
             }
         }
-        if (isTrivialApplication) {
+        if (isTrivial) {
           // Render with _ placeholders if trivial
-          s"${lambda.output.shortName}[${lambda.input.map(_ => "_").mkString(", ")}]"
+          s"${lambda.output.scalaStyledName}[${lambda.input.map(_ => "_").mkString(", ")}]"
         } else {
           // Render full form if non-trivial
-          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.shortName}"
+          s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledName}"
         }
       case _ =>
         ref.scalaStyledName
