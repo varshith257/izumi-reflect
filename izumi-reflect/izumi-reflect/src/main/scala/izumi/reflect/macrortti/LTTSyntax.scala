@@ -105,25 +105,27 @@ private[macrortti] trait LTTSyntax {
       case lambda: LightTypeTagRef.Lambda =>
         val outputName = lambda.output match {
           // Check if all lambda parameters are applied in the declared order (trivial lambda)
-          case LightTypeTagRef.FullReference(_, args, _) if args.size == lambda.input.size =>
-            val isTrivial = lambda.input.indices.forall(i => args(i) == lambda.input(i))
+          case ref: LightTypeTagRef.FullReference if ref.typeArgs.size == lambda.input.size =>
+            val isTrivial = lambda.input.indices.forall(i => ref.typeArgs(i) == lambda.input(i))
             if (isTrivial) {
               // Trivial lambda: render as `Either[_, _]`
-              s"${lambda.output.shortNameImpl}[${lambda.input.map(_ => "_").mkString(", ")}]"
+              s"${ref.shortNameImpl}[${lambda.input.map(_ => "_").mkString(", ")}]"
             } else {
               // Non-trivial reordering of lambda parameters: render with explicit lambda notation
-              s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledNameImpl}"
+              s"[${lambda.input.mkString(", ")}] =>> ${ref.scalaStyledNameImpl}"
             }
 
-          // Case for nested or more complex lambda cases (non-trivial)
-          case _ =>
-            s"[${lambda.input.mkString(", ")}] =>> ${lambda.output.scalaStyledNameImpl}"
+          case nested: LightTypeTagRef.Lambda =>
+            // Nested lambda case
+            s"[${lambda.input.mkString(", ")}] =>> ${nested.scalaStyledNameImpl}"
+
+          case other =>
+            s"[${lambda.input.mkString(", ")}] =>> ${other.toStringImpl}"
         }
         outputName
 
-      case LightTypeTagRef.FullReference(_, args, _) if args.nonEmpty =>
-        // Render parameterized types with `_` placeholders
-        s"${this.shortNameImpl}[${args.map(_ => "_").mkString(", ")}]"
+      case ref: LightTypeTagRef.FullReference if ref.typeArgs.nonEmpty =>
+        s"${ref.shortNameImpl}[${ref.typeArgs.map(_ => "_").mkString(", ")}]"
 
       case _ =>
         this.render()
