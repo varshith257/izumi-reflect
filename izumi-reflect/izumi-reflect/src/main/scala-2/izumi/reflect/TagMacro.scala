@@ -466,12 +466,7 @@ class TagMacro(val c: blackbox.Context) {
   protected[this] def mkPolyType(tpe: Type, params: List[c.Symbol], bounds: Option[TypeBounds] = None): Type = {
     val rhsParams = params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))
 
-    bounds match {
-      case Some(b) =>
-        internal.polyType(params, appliedType(tpe, params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))))
-      case None =>
-        internal.polyType(params, appliedType(tpe, params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))))
-    }
+    internal.polyType(params, appliedType(tpe, params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))))
   }
 
   private[this] def summonLightTypeTagOfAppropriateKind(tpe: Type): c.Expr[LightTypeTag] = {
