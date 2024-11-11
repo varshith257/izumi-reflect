@@ -448,9 +448,13 @@ class TagMacro(val c: blackbox.Context) {
     val mutRefinementSymbol: Symbol = newNestedSymbol(staticOwner, TypeName("<refinement>"), NoPosition, FlagsRepr(0L), isClass = true)
 
     val mutArg: Symbol = newNestedSymbol(mutRefinementSymbol, TypeName("Arg"), NoPosition, FlagsRepr(0L), isClass = false)
-    val bounds = kind.args.headOption.map(_.bounds).getOrElse(typeBounds(definitions.NothingTpe, definitions.AnyTpe))
     val params = kind.args.map(mkTypeParameter(mutArg, _))
-    setInfo(mutArg, mkPolyType(tpe, params, bounds))
+    val polyTypeWithConstraint = {
+      val upperBound = definitions.AnyTpe
+      val lowerBound = definitions.NothingTpe
+      mkPolyType(tpe, params, Some(typeBounds(lowerBound, upperBound)))
+    }
+    setInfo(mutArg, polyTypeWithConstraint)
 
     val scope = newScopeWith(mutArg)
 
@@ -460,10 +464,15 @@ class TagMacro(val c: blackbox.Context) {
   }
 
   @inline
-  protected[this] def mkPolyType(tpe: Type, params: List[c.Symbol], bounds: TypeBounds): Type = {
+  protected[this] def mkPolyType(tpe: Type, params: List[c.Symbol], bounds: Option[TypeBounds] = None): Type = {
     val rhsParams = params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))
 
-    internal.polyType(params, appliedType(tpe, params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil).withBounds(bounds))))
+    bounds match {
+      case Some(b) =>
+        internal.polyType(params, appliedType(tpe, params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))))
+      case None =>
+        internal.polyType(params, appliedType(tpe, params.map(symbol => internal.typeRef(NoPrefix, symbol, Nil))))
+    }
   }
 
   private[this] def summonLightTypeTagOfAppropriateKind(tpe: Type): c.Expr[LightTypeTag] = {
