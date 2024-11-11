@@ -53,9 +53,8 @@ class TagTest extends SharedTagTest {
       trait XAble[A <: X]
       class Y extends X
 
-      type BoundXAble[A] = XAble[A]
-
-      def getTag[F[_]: Tag.auto.T] = Tag[F[Y]]
+      type BoundXAble[A <: X] = XAble[A]
+      def getTag[F[_ <: X]: Tag.auto.T] = Tag[F[Y]]
 
       assertSame(getTag[BoundXAble].tag, Tag[XAble[Y]].tag)
     }
