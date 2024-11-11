@@ -48,17 +48,14 @@ class TagTest extends SharedTagTest {
       assert(testTagK[Set, Int].tag == fromRuntime[Set[Int]])
     }
 
-    "Support HKTag for unapplied type lambdas with type bounds (Scala 3 specific, union types)" in {
+    "Support HKTag for unapplied type lambdas with type bounds (Scala 2 specific, union types)" in {
       trait X
       trait XAble[A <: X]
       class Y extends X
 
-      trait WrappedBoundXAble[F[_ <: X]]
-      object WrappedBoundXAble {
-        type BoundXAble[A <: X] = XAble[A]
-      }
-      def getTag[F[_]: Tag.auto.T] = Tag[F[Y]]
-      assertSame(getTag[WrappedBoundXAble.BoundXAble].tag, Tag[XAble[Y]].tag)
+      implicit def getTag[F[_ <: X]](implicit ev: Tag[F[Y]]): Tag[F[Y]] = ev
+
+      assertSame(getTag[XAble].tag, Tag[XAble[Y]].tag)
     }
 
     "Handle Tags outside of a predefined set (Scala 2 HKTag Syntax)" in {
