@@ -53,9 +53,11 @@ class TagTest extends SharedTagTest {
       trait XAble[A <: X]
       class Y extends X
 
-      def getTag[F[_ <: X]: Tag.auto.T] = Tag[F[Y]]
+      type BoundXAble[A] = XAble[A]
 
-      assertSame(getTag[XAble].tag, Tag[XAble[Y]].tag)
+      def getTag[F[_]: Tag.auto.T] = Tag[F[Y]]
+
+      assertSame(getTag[BoundXAble].tag, Tag[XAble[Y]].tag)
     }
 
     "Handle Tags outside of a predefined set (Scala 2 HKTag Syntax)" in {
