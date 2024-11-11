@@ -58,7 +58,7 @@ class TagTest extends SharedTagTest {
         type BoundXAble[A <: X] = XAble[A]
       }
       def getTag[F[_]: Tag.auto.T] = Tag[F[Y]]
-      assertSame(getTag[BoundXAble].tag, Tag[XAble[Y]].tag)
+      assertSame(getTag[WrappedBoundXAble.BoundXAble].tag, Tag[XAble[Y]].tag)
     }
 
     "Handle Tags outside of a predefined set (Scala 2 HKTag Syntax)" in {
