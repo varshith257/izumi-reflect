@@ -449,12 +449,11 @@ class TagMacro(val c: blackbox.Context) {
 
     val mutArg: Symbol = newNestedSymbol(mutRefinementSymbol, TypeName("Arg"), NoPosition, FlagsRepr(0L), isClass = false)
     val params = kind.args.map(mkTypeParameter(mutArg, _))
-    val polyTypeWithConstraint = {
-      val upperBound = definitions.AnyTpe
-      val lowerBound = definitions.NothingTpe
-      mkPolyType(tpe, params, Some(typeBounds(lowerBound, upperBound)))
-    }
-    setInfo(mutArg, polyTypeWithConstraint)
+    val upperBound = definitions.AnyTpe
+    val lowerBound = definitions.NothingTpe
+    val bounds = TypeBounds(lowerBound, upperBound)
+
+    setInfo(mutArg, mkPolyType(tpe, params, Some(bounds)))
 
     val scope = newScopeWith(mutArg)
 
