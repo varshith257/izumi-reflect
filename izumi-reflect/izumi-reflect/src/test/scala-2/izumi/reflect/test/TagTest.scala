@@ -48,6 +48,18 @@ class TagTest extends SharedTagTest {
       assert(testTagK[Set, Int].tag == fromRuntime[Set[Int]])
     }
 
+    "Support HKTag for higher-kinded type bounds in Scala 2" in {
+      trait X
+      trait XAble[A <: X]
+      class Y extends X
+
+      // Attempting to get a tag for a higher-kinded type with bounded type parameter
+      def getBoundedTag[F[_ <: X]: Tag.auto.T] = Tag[F[Y]]
+
+      // Asserting that we get the expected tag without compilation issues
+      assertSame(getBoundedTag[XAble].tag, Tag[XAble[Y]].tag)
+    }
+
     "Handle Tags outside of a predefined set (Scala 2 HKTag Syntax)" in {
       type TagX[T[_, _, _[_[_], _], _[_], _]] = HKTag[{ type Arg[A, B, C[_[_], _], D[_], E] = T[A, B, C, D, E] }]
 
