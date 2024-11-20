@@ -101,7 +101,35 @@ private[macrortti] trait LTTSyntax {
 
   protected[this] final def scalaStyledNameImpl: String = {
     import izumi.reflect.macrortti.LTTRenderables.ScalaStyledLambdas._
-    (this: LightTypeTagRef).render()
+    (this: LightTypeTagRef) match {
+      case lambda: LightTypeTagRef.Lambda =>
+        val outputName = lambda.output match {
+          // Check if all lambda parameters are applied in the declared order (trivial lambda)
+          case ref: LightTypeTagRef.FullReference if ref.typeArgs.size == lambda.input.size =>
+            val isTrivial = lambda.input.indices.forall(i => ref.typeArgs(i) == lambda.input(i))
+            if (isTrivial) {
+              // Trivial lambda: render as `Either[_, _]`
+              s"${ref.shortNameImpl}[${lambda.input.map(_ => "_").mkString(", ")}]"
+            } else {
+              // Non-trivial reordering of lambda parameters: render with explicit lambda notation
+              s"[${lambda.input.mkString(", ")}] =>> ${ref.scalaStyledNameImpl}"
+            }
+
+          case nested: LightTypeTagRef.Lambda =>
+            // Nested lambda case
+            s"[${lambda.input.mkString(", ")}] =>> ${nested.scalaStyledNameImpl}"
+
+          case other =>
+            s"[${lambda.input.mkString(", ")}] =>> ${other.toStringImpl}"
+        }
+        outputName
+
+      case ref: LightTypeTagRef.FullReference if ref.typeArgs.nonEmpty =>
+        s"${ref.shortNameImpl}[${ref.typeArgs.map(_ => "_").mkString(", ")}]"
+
+      case _ =>
+        this.render()
+    }
   }
 
   @deprecated(
