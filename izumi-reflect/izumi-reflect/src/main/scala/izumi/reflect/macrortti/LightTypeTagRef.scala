@@ -192,12 +192,16 @@ object LightTypeTagRef extends LTTOrdering {
   def maybeIntersection(r: Set[_ <: LightTypeTagRef]): AppliedReference = maybeIntersection(r.iterator)
   def maybeUnion(r: Set[_ <: LightTypeTagRef]): AppliedReference = maybeUnion(r.iterator)
 
-  private[reflect] def normalizeLambda(lambda: Lambda): Lambda = {
+  private[reflect] def normalizeLambda(lambda: Lambda, parentDepth: Int = 0): Lambda = {
     val updatedInput = lambda.input.zipWithIndex.map {
       case (param, idx) =>
-        LambdaParamName(idx, -1 * (lambda.input.size - idx), lambda.input.size)
+        LambdaParamName(idx, parentDepth - (lambda.input.size - idx), lambda.input.size)
     }
-    val updatedOutput = normalizeReferences(lambda.output, updatedInput)
+    val updatedOutput = lambda.output match {
+      case nestedLambda: Lambda => normalizeLambda(nestedLambda, parentDepth - lambda.input.size)
+      case other => normalizeReferences(other, updatedInput)
+    }
+
     Lambda(updatedInput, updatedOutput)
   }
 
