@@ -77,79 +77,106 @@ final class TagMacro(using override val qctx: Quotes) extends InspectorBase {
       }
     }
 
+    def summonLTTForTypeLambda(typeLambda: TypeLambda): Expr[Tag[Any]] = {
+      typeLambda.resType match {
+        case AppliedType(ctor, args) =>
+          val ctorTag = summonTag[T, Any](ctor)
+          val argTags = Expr.ofList(args.map {
+            arg =>
+              arg match {
+                case param: ParamRef if param.binder == typeLambda => '{ None }
+                case _ => summonLTTAndFastTrackIfNotTypeParam(arg)
+              }
+          })
+          '{ Tag.appliedTagNonPos[T](${ ctorTag }, ${ argTags }) }
+
+        case refinement: Refinement =>
+          val refinedParent = refinement.parent
+          val refinedMembers = refinement.decls
+          val parentTag = summonLTTAndFastTrackIfNotTypeParam(refinedParent)
+          val memberTags = Expr.ofList(refinedMembers.collect {
+            case sym if sym.isType =>
+              summonLTTAndFastTrackIfNotTypeParam(sym.info)
+          })
+          '{ Tag.refinedTag[T](${ parentTag }, ${ memberTags }) }
+
+        case _ =>
+          report.errorAndAbort(s"Unsupported polymorphic function type refinement: ${typeLambda.resType.show}")
+      }
+    }
+
     typeReprDealiased match {
       case outerLambda: TypeLambda =>
-        outerLambda.resType match {
-          case AppliedType(ctorTpe, typeArgsTpes) =>
-            val paramsRange = 0 until outerLambda.paramNames.size
-            val isSimpleApplication = typeArgsTpes.collect {
-              case ref: ParamRef if ref.binder == outerLambda => ref.paramNum
-            } == paramsRange
+        summonLTTForTypeLambda(outerLambda)
+      case AppliedType(ctorTpe, typeArgsTpes) =>
+        val paramsRange = 0 until outerLambda.paramNames.size
+        val isSimpleApplication = typeArgsTpes.collect {
+          case ref: ParamRef if ref.binder == outerLambda => ref.paramNum
+        } == paramsRange
 
-            val constructorTag = summonTag[T, Any](ctorTpe)
-            if (isSimpleApplication) {
-              val argsTags = Expr.ofList(typeArgsTpes.map(a => summonIfNotLambdaParamOf(a, outerLambda)))
-              '{ Tag.appliedTagNonPos[T](${ constructorTag }, ${ argsTags }) }
-            } else {
-              val distinctNonParamArgsTypes = typeArgsTpes.filter(!isLambdaParamOf(_, outerLambda)).distinct
-              val outerLambdaParamArgsTypeParamRefs = paramsRange.map(outerLambda.param(_)).toList
+        val constructorTag = summonTag[T, Any](ctorTpe)
+        if (isSimpleApplication) {
+          val argsTags = Expr.ofList(typeArgsTpes.map(a => summonIfNotLambdaParamOf(a, outerLambda)))
+          '{ Tag.appliedTagNonPos[T](${ constructorTag }, ${ argsTags }) }
+        } else {
+          val distinctNonParamArgsTypes = typeArgsTpes.filter(!isLambdaParamOf(_, outerLambda)).distinct
+          val outerLambdaParamArgsTypeParamRefs = paramsRange.map(outerLambda.param(_)).toList
 
-              val arity = 1 + distinctNonParamArgsTypes.size + outerLambdaParamArgsTypeParamRefs.size
-              val fullParamTail = (distinctNonParamArgsTypes ++ outerLambdaParamArgsTypeParamRefs)
-                .iterator.distinct.zipWithIndex
-              val typeArgToLambdaParameterMap = fullParamTail.map {
-                case (argTpe, idx) =>
-                  val idxPlusOne = idx + 1
-                  val lambdaParameter = SymName.LambdaParamName(idxPlusOne, -3, arity)
-                  argTpe -> lambdaParameter
-              }.toMap
+          val arity = 1 + distinctNonParamArgsTypes.size + outerLambdaParamArgsTypeParamRefs.size
+          val fullParamTail = (distinctNonParamArgsTypes ++ outerLambdaParamArgsTypeParamRefs)
+            .iterator.distinct.zipWithIndex
+          val typeArgToLambdaParameterMap = fullParamTail.map {
+            case (argTpe, idx) =>
+              val idxPlusOne = idx + 1
+              val lambdaParameter = SymName.LambdaParamName(idxPlusOne, -3, arity)
+              argTpe -> lambdaParameter
+          }.toMap
 
-              val usageOrderDistinctNonLambdaArgs = distinctNonParamArgsTypes.map(t => typeArgToLambdaParameterMap(t))
-              val declarationOrderLambdaParamArgs = outerLambdaParamArgsTypeParamRefs.map(t => typeArgToLambdaParameterMap(t))
-              val completeTail = usageOrderDistinctNonLambdaArgs ::: declarationOrderLambdaParamArgs
+          val usageOrderDistinctNonLambdaArgs = distinctNonParamArgsTypes.map(t => typeArgToLambdaParameterMap(t))
+          val declarationOrderLambdaParamArgs = outerLambdaParamArgsTypeParamRefs.map(t => typeArgToLambdaParameterMap(t))
+          val completeTail = usageOrderDistinctNonLambdaArgs ::: declarationOrderLambdaParamArgs
 
-              val usages = typeArgsTpes.map(t => TypeParam(NameReference(typeArgToLambdaParameterMap(t)), Variance.Invariant))
+          val usages = typeArgsTpes.map(t => TypeParam(NameReference(typeArgToLambdaParameterMap(t)), Variance.Invariant))
 
-              // we give a distinct lambda parameter to the constructor, even if constructor is one of the type parameters
-              val firstParamIdx = 0
-              assert(completeTail.size + 1 == arity)
-              val ctorLambdaParameter = SymName.LambdaParamName(firstParamIdx, -3, arity)
+          // we give a distinct lambda parameter to the constructor, even if constructor is one of the type parameters
+          val firstParamIdx = 0
+          assert(completeTail.size + 1 == arity)
+          val ctorLambdaParameter = SymName.LambdaParamName(firstParamIdx, -3, arity)
 
-              val ctorApplyingLambda =
-                LightTypeTagRef.Lambda(
-                  ctorLambdaParameter :: completeTail,
-                  FullReference(ctorLambdaParameter, usages)
-                )
-
-              log(s"""HK non-trivial lambda construction:
-                     |ctorApplyingLambda=$ctorApplyingLambda
-                     |usageOrderNonLambdaArgs=$usageOrderDistinctNonLambdaArgs
-                     |declarationOrderLambdaParamArgs=$declarationOrderLambdaParamArgs
-                     |""".stripMargin)
-
-              val argTagsExceptCtor = {
-                val nonParamArgsDealiased = distinctNonParamArgsTypes.map(_._dealiasSimplifiedFull)
-                log(s"HK COMPLEX Now summoning tags for args=$nonParamArgsDealiased outerLambdaParams=$outerLambdaParamArgsTypeParamRefs")
-                Expr.ofList(
-                  nonParamArgsDealiased.map(t => '{ Some(${ summonLTTAndFastTrackIfNotTypeParam(t) }) }) ++ outerLambdaParamArgsTypeParamRefs.map(_ => '{ None })
-                )
-              }
-
-              val outerLambdaReprTag = Inspect.makeParsedLightTypeTagImpl(LightTypeTag(ctorApplyingLambda, Map.empty, Map.empty))
-              '{
-                val ctorTag = ${ constructorTag }.asInstanceOf[Tag[Any]]
-                Tag.appliedTagNonPosAux[T](ctorTag.closestClass, ${ outerLambdaReprTag }, Some(ctorTag.tag) :: ${ argTagsExceptCtor })
-              }
-            }
-
-          case other =>
-            // TODO add support for and/or/refinement, see test with `IntersectionBlockingIO`
-            report.warning(
-              s"""TODO: Pathological intersection refinement result in lambda being reconstructed result=`${other.show}` in the rhs of type lambda lam=`${outerLambda.show}`
-                 |Only simple applied types of form F[A] are supported in results of type lambdas. The generated tag will not work correctly.""".stripMargin
+          val ctorApplyingLambda =
+            LightTypeTagRef.Lambda(
+              ctorLambdaParameter :: completeTail,
+              FullReference(ctorLambdaParameter, usages)
             )
-            createTag[T](outerLambda)
+
+          log(s"""HK non-trivial lambda construction:
+                 |ctorApplyingLambda=$ctorApplyingLambda
+                 |usageOrderNonLambdaArgs=$usageOrderDistinctNonLambdaArgs
+                 |declarationOrderLambdaParamArgs=$declarationOrderLambdaParamArgs
+                 |""".stripMargin)
+
+          val argTagsExceptCtor = {
+            val nonParamArgsDealiased = distinctNonParamArgsTypes.map(_._dealiasSimplifiedFull)
+            log(s"HK COMPLEX Now summoning tags for args=$nonParamArgsDealiased outerLambdaParams=$outerLambdaParamArgsTypeParamRefs")
+            Expr.ofList(
+              nonParamArgsDealiased.map(t => '{ Some(${ summonLTTAndFastTrackIfNotTypeParam(t) }) }) ++ outerLambdaParamArgsTypeParamRefs.map(_ => '{ None })
+            )
+          }
+
+          val outerLambdaReprTag = Inspect.makeParsedLightTypeTagImpl(LightTypeTag(ctorApplyingLambda, Map.empty, Map.empty))
+          '{
+            val ctorTag = ${ constructorTag }.asInstanceOf[Tag[Any]]
+            Tag.appliedTagNonPosAux[T](ctorTag.closestClass, ${ outerLambdaReprTag }, Some(ctorTag.tag) :: ${ argTagsExceptCtor })
+          }
         }
+
+      case other =>
+        // TODO add support for and/or/refinement, see test with `IntersectionBlockingIO`
+        report.warning(
+          s"""TODO: Pathological intersection refinement result in lambda being reconstructed result=`${other.show}` in the rhs of type lambda lam=`${outerLambda.show}`
+             |Only simple applied types of form F[A] are supported in results of type lambdas. The generated tag will not work correctly.""".stripMargin
+        )
+        createTag[T](outerLambda)
 
       case AppliedType(ctor, args) =>
         val ctorTag = summonTagAndFastTrackIfNotTypeParam(ctor)
