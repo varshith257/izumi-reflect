@@ -54,6 +54,12 @@ class TagTest extends SharedTagTest with TagAssertions {
       assertSameStrict(t2[String, String].tag, Tag[String].tag)
     }
 
+    "Support nested polymorphic function types (Scala 3 specific, TypeLambda)" in {
+      type NestedMonadRunner[F[_], G[_]] = [A] => G[A] => F[G[Either[CustomError, A]]]
+      val tag = summon[Tag[[A] => G[A] => F[G[Either[CustomError, A]]]]]
+      assert(tag != null)
+    }
+
     "type tags with bounds are successfully requested by TagMacro" in {
       type `TagK<:Dep`[K[_ <: Dep]] = Tag.auto.T[K]
 
